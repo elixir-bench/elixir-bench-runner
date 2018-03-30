@@ -20,3 +20,7 @@ the release console using:
 ```elixir
 ElixirBench.Benchmarks.create_runner(%{api_key: some_key, name: some_name})
 ```
+
+## License
+
+ElixirBench Runner is released under the Apache 2.0 License - see the [LICENSE](LICENSE.md) file.
