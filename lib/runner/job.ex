@@ -39,7 +39,13 @@ defmodule ElixirBench.Runner.Job do
   def start_job(id, repo_slug, branch, commit, config) do
     ensure_no_other_jobs!()
 
-    job = %Job{id: to_string(id), repo_slug: repo_slug, branch: branch, commit: commit, config: config}
+    job = %Job{
+      id: to_string(id),
+      repo_slug: repo_slug,
+      branch: branch,
+      commit: commit,
+      config: config
+    }
 
     task =
       Task.Supervisor.async_nolink(ElixirBench.Runner.JobsSupervisor, fn ->
@@ -47,8 +53,10 @@ defmodule ElixirBench.Runner.Job do
       end)
 
     timeout = Confex.fetch_env!(:runner, :job_timeout)
+
     case Task.yield(task, timeout) || Task.shutdown(task) do
-      {:ok, result} -> result
+      {:ok, result} ->
+        result
 
       nil ->
         %{job | status: 127, log: "Job execution timed out"}
@@ -70,7 +78,9 @@ defmodule ElixirBench.Runner.Job do
     File.write!(compose_config_path, compose_config)
 
     try do
-      {log, status} = System.cmd("docker-compose", ["-f", compose_config_path] ++ @static_compose_args)
+      {log, status} =
+        System.cmd("docker-compose", ["-f", compose_config_path] ++ @static_compose_args)
+
       measurements = collect_measurements(benchmars_output_path)
       context = collect_context(benchmars_output_path)
       %{job | log: log, status: status, measurements: measurements, context: context}
@@ -112,12 +122,12 @@ defmodule ElixirBench.Runner.Job do
     container_benchmars_output_path = Confex.fetch_env!(:runner, :container_benchmars_output_path)
 
     %{
-        network_mode: @network_mode,
-        image: "elixirbench/runner:#{job.config.elixir_version}-#{job.config.erlang_version}",
-        volumes: ["#{get_benchmars_output_path(job)}:#{container_benchmars_output_path}:Z"],
-        depends_on: deps,
-        environment: build_runner_environment(job)
-      }
+      network_mode: @network_mode,
+      image: "elixirbench/runner:#{job.config.elixir_version}-#{job.config.erlang_version}",
+      volumes: ["#{get_benchmars_output_path(job)}:#{container_benchmars_output_path}:Z"],
+      depends_on: deps,
+      environment: build_runner_environment(job)
+    }
   end
 
   defp build_runner_environment(job) do
@@ -186,6 +196,7 @@ defmodule ElixirBench.Runner.Job do
           {_, _binding} ->
             %{}
         end
+
       {:error, _} ->
         %{}
     end

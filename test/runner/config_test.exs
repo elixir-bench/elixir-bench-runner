@@ -9,13 +9,20 @@ defmodule ElixirBench.Runner.ConfigTest do
   @tag requires_internet_connection: true
   describe "fetch_config_by_repo_slug/1" do
     test "loads configuration from repo" do
-      assert {:ok, %ElixirBench.Runner.Config{}} = fetch_config_by_repo_slug(@repo_slug_fixture, @branch_fixture)
-      assert {:ok, %ElixirBench.Runner.Config{}} = fetch_config_by_repo_slug(@repo_slug_fixture, @commit_fixture)
+      assert {:ok, %ElixirBench.Runner.Config{}} =
+               fetch_config_by_repo_slug(@repo_slug_fixture, @branch_fixture)
+
+      assert {:ok, %ElixirBench.Runner.Config{}} =
+               fetch_config_by_repo_slug(@repo_slug_fixture, @commit_fixture)
     end
 
     test "returns error when file does not exist" do
-      assert fetch_config_by_repo_slug("elixir-ecto/ecto", "not_a_branch") == {:error, :config_not_found}
-      assert fetch_config_by_repo_slug("not-elixir-ecto/ecto", "mm/benches") == {:error, :config_not_found}
+      assert fetch_config_by_repo_slug("elixir-ecto/ecto", "not_a_branch") ==
+               {:error, :config_not_found}
+
+      assert fetch_config_by_repo_slug("not-elixir-ecto/ecto", "mm/benches") ==
+               {:error, :config_not_found}
+
       assert fetch_config_by_repo_slug("not-elixir-ecto/ecto") == {:error, :config_not_found}
     end
   end

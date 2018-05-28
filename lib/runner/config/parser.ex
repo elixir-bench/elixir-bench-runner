@@ -14,12 +14,13 @@ defmodule ElixirBench.Runner.Config.Parser do
          {:ok, erlang_version} <- fetch_erlang_version(raw_config),
          {:ok, environment_variables} <- fetch_environment_variables(raw_config),
          {:ok, deps} <- fetch_deps(raw_config) do
-    {:ok, %ElixirBench.Runner.Config{
-      elixir_version: elixir_version,
-      erlang_version: erlang_version,
-      environment_variables: environment_variables,
-      deps: deps
-    }}
+      {:ok,
+       %ElixirBench.Runner.Config{
+         elixir_version: elixir_version,
+         erlang_version: erlang_version,
+         environment_variables: environment_variables,
+         deps: deps
+       }}
     end
   end
 
@@ -31,9 +32,14 @@ defmodule ElixirBench.Runner.Config.Parser do
     supported_elixir_versions = Confex.fetch_env!(:runner, :supported_elixir_versions)
 
     case Map.fetch(raw_config, "elixir") do
-      :error -> {:ok, Confex.fetch_env!(:runner, :default_elixir_version)}
-      {:ok, version} when is_binary(version) -> do_fetch_elixir_version(version, supported_elixir_versions)
-      {:ok, _version} -> {:error, :malformed_elixir_version}
+      :error ->
+        {:ok, Confex.fetch_env!(:runner, :default_elixir_version)}
+
+      {:ok, version} when is_binary(version) ->
+        do_fetch_elixir_version(version, supported_elixir_versions)
+
+      {:ok, _version} ->
+        {:error, :malformed_elixir_version}
     end
   end
 
@@ -49,9 +55,14 @@ defmodule ElixirBench.Runner.Config.Parser do
     supported_erlang_versions = Confex.fetch_env!(:runner, :supported_erlang_versions)
 
     case Map.fetch(raw_config, "erlang") do
-      :error -> {:ok, Confex.fetch_env!(:runner, :default_erlang_version)}
-      {:ok, version} when is_binary(version) -> do_fetch_erlang_version(version, supported_erlang_versions)
-      {:ok, _version} -> {:error, :malformed_erlang_version}
+      :error ->
+        {:ok, Confex.fetch_env!(:runner, :default_erlang_version)}
+
+      {:ok, version} when is_binary(version) ->
+        do_fetch_erlang_version(version, supported_erlang_versions)
+
+      {:ok, _version} ->
+        {:error, :malformed_erlang_version}
     end
   end
 
@@ -63,23 +74,31 @@ defmodule ElixirBench.Runner.Config.Parser do
     end
   end
 
-  defp fetch_environment_variables(%{"environment" => environment_variables}) when is_map(environment_variables) do
-    errors = Enum.reject(environment_variables, fn {key, value} -> is_binary(key) and is_binary(value) end)
+  defp fetch_environment_variables(%{"environment" => environment_variables})
+       when is_map(environment_variables) do
+    errors =
+      Enum.reject(environment_variables, fn {key, value} ->
+        is_binary(key) and is_binary(value)
+      end)
+
     if errors == [] do
       {:ok, stringify_values(environment_variables)}
     else
       {:error, {:invalid_environment_variables, errors}}
     end
   end
+
   defp fetch_environment_variables(%{"environment" => environment_variables}) do
     {:error, {:malformed_environment_variables, environment_variables}}
   end
+
   defp fetch_environment_variables(_raw_config) do
     {:ok, []}
   end
 
   defp fetch_deps(%{"deps" => %{"docker" => docker_deps}}) when is_list(docker_deps) do
     errors = Enum.reject(docker_deps, fn dep -> Map.has_key?(dep, "image") end)
+
     if errors == [] do
       deps = Enum.map(docker_deps, &stringify_environment(&1))
       {:ok, deps}
@@ -87,17 +106,19 @@ defmodule ElixirBench.Runner.Config.Parser do
       {:error, {:invalid_deps, errors}}
     end
   end
+
   defp fetch_deps(%{"deps" => %{"docker" => docker_deps}}) do
     {:error, {:malformed_deps, docker_deps}}
   end
+
   defp fetch_deps(_raw_config) do
     {:ok, []}
   end
 
   defp stringify_environment(%{"environment" => environment} = raw_config),
     do: Map.put(raw_config, "environment", stringify_values(environment))
-  defp stringify_environment(raw_config),
-    do: raw_config
+
+  defp stringify_environment(raw_config), do: raw_config
 
   defp stringify_values(map) do
     for {key, value} <- map, do: {key, to_string(value)}, into: %{}
