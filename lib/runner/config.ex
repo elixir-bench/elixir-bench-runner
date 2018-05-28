@@ -8,6 +8,7 @@ defmodule ElixirBench.Runner.Config do
       "environment_variables" => env,
       "deps" => %{"docker" => docker}
     } = map
+
     %__MODULE__{
       elixir_version: elixir,
       erlang_version: erlang,

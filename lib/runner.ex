@@ -12,7 +12,12 @@ defmodule ElixirBench.Runner do
 
   def init(_opts) do
     Process.send_after(self(), :try_claim, @claim_delay)
-    client = %Api.Client{username: Confex.fetch_env!(:runner, :api_user), password: Confex.fetch_env!(:runner, :api_key)}
+
+    client = %Api.Client{
+      username: Confex.fetch_env!(:runner, :api_user),
+      password: Confex.fetch_env!(:runner, :api_key)
+    }
+
     {:ok, client}
   end
 
@@ -31,15 +36,24 @@ defmodule ElixirBench.Runner do
   end
 
   defp process_job(job, client) do
-    %{"id" => id, "repo_slug" => repo_slug, "branch_name" => branch, "commit_sha" => commit, "config" => config} = job
+    %{
+      "id" => id,
+      "repo_slug" => repo_slug,
+      "branch_name" => branch,
+      "commit_sha" => commit,
+      "config" => config
+    } = job
+
     config = Config.from_string_map(config)
     job = Job.start_job(id, repo_slug, branch, commit, config)
+
     data = %{
       elixir_version: job.config.elixir_version,
       erlang_version: job.config.erlang_version,
       measurements: job.measurements,
       log: job.log || ""
     }
+
     data = Map.merge(data, job.context)
     {:ok, _} = Api.submit_results(client, job, data)
   end
