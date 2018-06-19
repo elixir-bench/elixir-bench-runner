@@ -1,6 +1,6 @@
 defmodule ElixirBench.Runner.Api do
   defmodule Client do
-    defstruct [:username, :password, base_url: "https://api.elixirbench.org/runner-api"]
+    defstruct [:username, :password, :base_url]
   end
 
   def claim_job(client) do
