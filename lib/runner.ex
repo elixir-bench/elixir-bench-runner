@@ -15,7 +15,8 @@ defmodule ElixirBench.Runner do
 
     client = %Api.Client{
       username: Confex.fetch_env!(:runner, :api_user),
-      password: Confex.fetch_env!(:runner, :api_key)
+      password: Confex.fetch_env!(:runner, :api_key),
+      base_url: Confex.fetch_env!(:runner, :api_url)
     }
 
     {:ok, client}
