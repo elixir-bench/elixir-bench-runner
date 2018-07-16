@@ -36,23 +36,16 @@ defmodule ElixirBench.Runner.Job do
   @doc """
   Executes a benchmarking job for a specific commit.
   """
-  def start_job(id, repo_slug, branch, commit, config) do
+  def start_job(job, opts) do
     ensure_no_other_jobs!()
 
-    job = %Job{
-      id: to_string(id),
-      repo_slug: repo_slug,
-      branch: branch,
-      commit: commit,
-      config: config
-    }
+    timeout = Keyword.get(opts, :timeout, Confex.fetch_env!(:runner, :job_timeout))
+    task_fun = Keyword.get(opts, :task_fun, &run_job/1)
 
     task =
       Task.Supervisor.async_nolink(ElixirBench.Runner.JobsSupervisor, fn ->
-        run_job(job)
+        task_fun.(job)
       end)
-
-    timeout = Confex.fetch_env!(:runner, :job_timeout)
 
     case Task.yield(task, timeout) || Task.shutdown(task) do
       {:ok, result} ->
@@ -63,12 +56,12 @@ defmodule ElixirBench.Runner.Job do
     end
   end
 
-  defp ensure_no_other_jobs! do
+  @doc false
+  def ensure_no_other_jobs! do
     %{active: 0} = Supervisor.count_children(ElixirBench.Runner.JobsSupervisor)
   end
 
   @doc false
-  # Public for testing purposes
   def run_job(job) do
     benchmars_output_path = get_benchmars_output_path(job)
     File.mkdir_p!(benchmars_output_path)
@@ -93,7 +86,8 @@ defmodule ElixirBench.Runner.Job do
     end
   end
 
-  defp get_benchmars_output_path(%Job{id: id}) do
+  @doc false
+  def get_benchmars_output_path(%Job{id: id}) do
     Confex.fetch_env!(:runner, :benchmars_output_path) <> "/" <> id
   end
 

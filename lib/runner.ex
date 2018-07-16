@@ -5,6 +5,7 @@ defmodule ElixirBench.Runner do
   alias ElixirBench.Runner.{Api, Job, Config}
 
   @claim_delay 10_000
+  @job_timeout Confex.fetch_env!(:runner, :job_timeout)
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, opts)
@@ -36,17 +37,11 @@ defmodule ElixirBench.Runner do
     {:noreply, client}
   end
 
-  defp process_job(job, client) do
-    %{
-      "id" => id,
-      "repo_slug" => repo_slug,
-      "branch_name" => branch,
-      "commit_sha" => commit,
-      "config" => config
-    } = job
+  defp process_job(job_data, client) do
+    opts = [timeout: @job_timeout, task_fun: &Job.run_job/1]
+    job = build_job_struct(job_data)
 
-    config = Config.from_string_map(config)
-    job = Job.start_job(id, repo_slug, branch, commit, config)
+    job = Job.start_job(job, opts)
 
     data = %{
       elixir_version: job.config.elixir_version,
@@ -57,5 +52,25 @@ defmodule ElixirBench.Runner do
 
     data = Map.merge(data, job.context)
     {:ok, _} = Api.submit_results(client, job, data)
+  end
+
+  defp build_job_struct(job_data) do
+    %{
+      "id" => id,
+      "repo_slug" => repo_slug,
+      "branch_name" => branch,
+      "commit_sha" => commit,
+      "config" => config
+    } = job_data
+
+    config = Config.from_string_map(config)
+
+    %Job{
+      id: to_string(id),
+      repo_slug: repo_slug,
+      branch: branch,
+      commit: commit,
+      config: config
+    }
   end
 end
