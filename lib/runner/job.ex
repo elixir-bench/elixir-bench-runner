@@ -91,6 +91,7 @@ defmodule ElixirBench.Runner.Job do
     Confex.fetch_env!(:runner, :benchmars_output_path) <> "/" <> id
   end
 
+  @doc false
   def get_compose_config(job) do
     Antidote.encode!(%{version: "3", services: build_services(job)})
   end
@@ -106,7 +107,7 @@ defmodule ElixirBench.Runner.Job do
         Map.put(services, name, dep)
       end)
 
-    Map.put(services, "runner", build_runner_service(job, Map.keys(services)))
+    Map.put(services, "runner", build_runner_service(job, services))
   end
 
   defp get_dep_container_name(%{"container_name" => container_name}), do: container_name
@@ -119,9 +120,24 @@ defmodule ElixirBench.Runner.Job do
       network_mode: @network_mode,
       image: "elixirbench/runner:#{job.config.elixir_version}-#{job.config.erlang_version}",
       volumes: ["#{get_benchmars_output_path(job)}:#{container_benchmars_output_path}:Z"],
-      depends_on: deps,
-      environment: build_runner_environment(job)
+      depends_on: Map.keys(deps),
+      environment: build_runner_environment(job),
+      command: build_runner_command_from_deps(deps)
     }
+  end
+
+  defp build_runner_command_from_deps(deps) do
+    command =
+      Enum.reduce(deps, "", fn {_dep_name, dep_params}, acc ->
+        wait_port = get_in(dep_params, ["wait", "port"])
+
+        case wait_port do
+          nil -> acc
+          port -> acc <> "wait-for.sh localhost:#{port} -t 200 -- "
+        end
+      end)
+
+    command <> "mix run bench/bench_helper.exs"
   end
 
   defp build_runner_environment(job) do

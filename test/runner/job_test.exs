@@ -100,6 +100,64 @@ defmodule ElixirBench.Runner.JobTest do
     end
   end
 
+  describe "get_compose_config/1" do
+    test "return docker-compose setup for simple job" do
+      job = job_fixture()
+
+      compose_config =
+        Job.get_compose_config(job)
+        |> Antidote.decode!()
+
+      assert %{
+               "services" => %{
+                 "runner" => %{
+                   "image" => "elixirbench/runner:1.5.2-20.1.2",
+                   "command" => "mix run bench/bench_helper.exs",
+                   "network_mode" => "host",
+                   "environment" => %{
+                     "ELIXIRBENCH_REPO_SLUG" => "elixir-ecto/ecto",
+                     "ELIXIRBENCH_REPO_BRANCH" => "mm/benches",
+                     "ELIXIRBENCH_REPO_COMMIT" => "2a5a8efbc3afee3c6893f4cba33679e98142df3f"
+                   },
+                   "volumes" => [
+                     "/tmp/benchmarks/test_job:/var/bench:Z"
+                   ]
+                 }
+               },
+               "version" => "3"
+             } = compose_config
+    end
+
+    test "return docker-compose setup for job with deps and environment variables" do
+      job = job_fixture() |> with_deps |> with_env_variables
+      timeout = 200
+
+      compose_config =
+        Job.get_compose_config(job)
+        |> Antidote.decode!()
+
+      %{"services" => services} = compose_config
+
+      assert %{"job_test_job_mysql" => _mysql} = services
+      assert %{"job_test_job_postgres" => _postgres} = services
+
+      %{"runner" => %{"command" => command}} = services
+
+      assert command =~
+               "wait-for.sh localhost:3306 -t #{timeout} -- wait-for.sh localhost:5432 -t #{
+                 timeout
+               } -- mix run bench/bench_helper.exs"
+
+      assert %{"runner" => %{"depends_on" => ["job_test_job_mysql", "job_test_job_postgres"]}} =
+               services
+
+      assert %{"runner" => %{"environment" => %{"PG_URL" => "postgres:postgres@localhost"}}} =
+               services
+
+      assert %{"runner" => %{"environment" => %{"MYSQL_URL" => "root@localhost"}}} = services
+    end
+  end
+
   describe "format_measurement/2" do
     test "extract and format measurements information for benchmark given valid input" do
       benchmark_name = "insert_mysql"
@@ -182,5 +240,32 @@ defmodule ElixirBench.Runner.JobTest do
       log: nil,
       status: nil
     }
+  end
+
+  def with_deps(%Job{} = job) do
+    deps = [
+      %{
+        "container_name" => "postgres",
+        "image" => "postgres:9.6.6-alpine",
+        "wait" => %{"port" => "5432"}
+      },
+      %{
+        "container_name" => "mysql",
+        "environment" => %{"MYSQL_ALLOW_EMPTY_PASSWORD" => "true"},
+        "image" => "mysql:5.7.20",
+        "wait" => %{"port" => "3306"}
+      }
+    ]
+
+    %{job | config: %{job.config | deps: deps}}
+  end
+
+  def with_env_variables(%Job{} = job) do
+    env_vars = %{
+      "MYSQL_URL" => "root@localhost",
+      "PG_URL" => "postgres:postgres@localhost"
+    }
+
+    %{job | config: %{job.config | environment_variables: env_vars}}
   end
 end
