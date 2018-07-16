@@ -100,6 +100,71 @@ defmodule ElixirBench.Runner.JobTest do
     end
   end
 
+  describe "format_measurement/2" do
+    test "extract and format measurements information for benchmark given valid input" do
+      benchmark_name = "insert_mysql"
+      measurements = measurement_fixture()
+
+      %{
+        "statistics" => %{
+          "insert_changeset" => insert_changeset,
+          "insert_plain" => insert_plain
+        }
+      } = measurements
+
+      formatted_measurements = Job.format_measurement(measurements, benchmark_name)
+
+      assert %{"insert_mysql/insert_changeset" => ^insert_changeset} = formatted_measurements
+      assert %{"insert_mysql/insert_plain" => ^insert_plain} = formatted_measurements
+
+      measurements = Job.format_measurement(measurement_fixture(), "")
+
+      assert %{"/insert_changeset" => _} = measurements
+      assert %{"/insert_plain" => _} = measurements
+    end
+
+    test "return empty map given invalid inputs" do
+      assert %{} = Job.format_measurement(measurement_fixture(), nil)
+      assert %{} = Job.format_measurement(%{}, "insert_mysql")
+
+      assert %{} = Job.format_measurement(nil, "insert_mysql")
+      assert %{} = Job.format_measurement(%{"a" => "b"}, "insert_mysql")
+    end
+  end
+
+  def measurement_fixture do
+    %{
+      "statistics" => %{
+        "insert_changeset" => %{
+          "average" => 66025.6447368421,
+          "ips" => 15.145630216648275,
+          "maximum" => 298_716.0,
+          "median" => 49266.5,
+          "minimum" => 48642.0,
+          "mode" => 49141.0,
+          "percentiles" => %{"50" => 49266.5, "99" => 298_716.0},
+          "sample_size" => 76,
+          "std_dev" => 49623.892744827106,
+          "std_dev_ips" => 11.383230446584102,
+          "std_dev_ratio" => 0.7515851294237665
+        },
+        "insert_plain" => %{
+          "average" => 61939.7037037037,
+          "ips" => 16.144733348800386,
+          "maximum" => 320_994.0,
+          "median" => 49262.0,
+          "minimum" => 48727.0,
+          "mode" => [49179.0, 49222.0, 49020.0, 49128.0],
+          "percentiles" => %{"50" => 49262.0, "99" => 320_994.0},
+          "sample_size" => 81,
+          "std_dev" => 43170.800977605344,
+          "std_dev_ips" => 11.252573528147071,
+          "std_dev_ratio" => 0.6969810702375694
+        }
+      }
+    }
+  end
+
   def job_fixture do
     config = %ElixirBench.Runner.Config{
       deps: [],

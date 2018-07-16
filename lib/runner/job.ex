@@ -91,7 +91,7 @@ defmodule ElixirBench.Runner.Job do
     Confex.fetch_env!(:runner, :benchmars_output_path) <> "/" <> id
   end
 
-  defp get_compose_config(job) do
+  def get_compose_config(job) do
     Antidote.encode!(%{version: "3", services: build_services(job)})
   end
 
@@ -148,16 +148,21 @@ defmodule ElixirBench.Runner.Job do
     end)
   end
 
-  defp format_measurement(measurement, benchmark_name) do
-    run_times = Map.get(measurement, "run_times")
+  @doc false
+  def format_measurement(measurement, benchmark_name)
+      when is_map(measurement) and is_binary(benchmark_name) do
     statistics = Map.get(measurement, "statistics")
 
-    Map.new(run_times, fn {name, runs} ->
-      data = Map.fetch!(statistics, name)
-      data = Map.put(data, :run_times, runs)
-      {benchmark_name <> "/" <> name, data}
-    end)
+    case is_map(statistics) do
+      true ->
+        Map.new(statistics, fn {name, data} -> {"#{benchmark_name}/#{name}", data} end)
+
+      false ->
+        %{}
+    end
   end
+
+  def format_measurement(_measurement, _benchmark_name), do: %{}
 
   defp collect_context(benchmars_output_path) do
     mix_deps = read_mix_deps("#{benchmars_output_path}/mix.lock")
