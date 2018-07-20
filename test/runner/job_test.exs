@@ -20,13 +20,13 @@ defmodule ElixirBench.Runner.JobTest do
     assert job.context.worker_os in [:Linux, :Windows, :macOS]
   end
 
-  describe "start_job/6" do
+  describe "start_job/2" do
     test "run job and return results given execute function" do
       task_fun = fn job ->
         {:ok, %{job | log: "success", status: 0}}
       end
 
-      {:ok, job} = Job.start_job(job_fixture(), task_fun: task_fun)
+      {:ok, job} = Job.start_job(job_fixture(), task_fun)
 
       assert %{log: "success", status: 0} = job
     end
@@ -37,25 +37,28 @@ defmodule ElixirBench.Runner.JobTest do
         {:ok, %{}}
       end
 
+      # add child process to the Supervisor that executes a 2 second sleep
       %{pid: pid} =
         Task.Supervisor.async_nolink(ElixirBench.Runner.JobsSupervisor, fn ->
           :timer.sleep(2_000)
         end)
 
       assert_raise MatchError, fn ->
-        Job.start_job(job_fixture(), task_fun: task_fun)
+        Job.start_job(job_fixture(), task_fun)
       end
 
       Process.exit(pid, :kill)
     end
+  end
 
+  describe "start_job/3" do
     test "handle job timeout" do
       task_fun = fn _job ->
         :timer.sleep(2_000)
         {:ok, %{}}
       end
 
-      job = Job.start_job(job_fixture(), task_fun: task_fun, timeout: 100)
+      job = Job.start_job(job_fixture(), task_fun, timeout: 100)
 
       assert %{log: "Job execution timed out", status: 127} = job
     end
@@ -78,7 +81,7 @@ defmodule ElixirBench.Runner.JobTest do
     end
   end
 
-  describe "get_benchmars_output_path/1" do
+  describe "get_benchmarks_output_path/1" do
     test "return path for writing benchmark results" do
       env_backup = Application.get_env(:runner, :benchmars_output_path)
       Application.put_env(:runner, :benchmars_output_path, "/tmp")
@@ -105,7 +108,8 @@ defmodule ElixirBench.Runner.JobTest do
       job = job_fixture()
 
       compose_config =
-        Job.get_compose_config(job)
+        job
+        |> Job.get_compose_config()
         |> Antidote.decode!()
 
       assert %{
@@ -159,26 +163,22 @@ defmodule ElixirBench.Runner.JobTest do
   end
 
   describe "format_measurement/2" do
-    test "extract and format measurements information for benchmark given valid input" do
-      benchmark_name = "insert_mysql"
+    test "get and format statistics of a benchmark measurement" do
       measurements = measurement_fixture()
+      formatted_measurements = Job.format_measurement(measurements, "insert_mysql")
 
-      %{
-        "statistics" => %{
-          "insert_changeset" => insert_changeset,
-          "insert_plain" => insert_plain
-        }
-      } = measurements
+      expected_measurements = %{
+        "insert_mysql/insert_changeset" =>
+          get_in(measurements, ["statistics", "insert_changeset"]),
+        "insert_mysql/insert_plain" => get_in(measurements, ["statistics", "insert_plain"])
+      }
 
-      formatted_measurements = Job.format_measurement(measurements, benchmark_name)
+      assert ^expected_measurements = formatted_measurements
+    end
 
-      assert %{"insert_mysql/insert_changeset" => ^insert_changeset} = formatted_measurements
-      assert %{"insert_mysql/insert_plain" => ^insert_plain} = formatted_measurements
-
-      measurements = Job.format_measurement(measurement_fixture(), "")
-
-      assert %{"/insert_changeset" => _} = measurements
-      assert %{"/insert_plain" => _} = measurements
+    test "return empty map if no statistics is found in the measurement" do
+      measurements = measurement_fixture() |> Map.delete("statistics")
+      assert %{} == Job.format_measurement(measurements, "insert_mysql")
     end
 
     test "return empty map given invalid inputs" do
@@ -192,32 +192,50 @@ defmodule ElixirBench.Runner.JobTest do
 
   def measurement_fixture do
     %{
+      "sort_order" => [
+        "insert_changeset",
+        "insert_plain"
+      ],
+      "run_times" => %{
+        "insert_changeset" => [
+          7_990_089
+        ],
+        "insert_plain" => [
+          8_030_544
+        ]
+      },
       "statistics" => %{
-        "insert_changeset" => %{
-          "average" => 66025.6447368421,
-          "ips" => 15.145630216648275,
-          "maximum" => 298_716.0,
-          "median" => 49266.5,
-          "minimum" => 48642.0,
-          "mode" => 49141.0,
-          "percentiles" => %{"50" => 49266.5, "99" => 298_716.0},
-          "sample_size" => 76,
-          "std_dev" => 49623.892744827106,
-          "std_dev_ips" => 11.383230446584102,
-          "std_dev_ratio" => 0.7515851294237665
-        },
         "insert_plain" => %{
-          "average" => 61939.7037037037,
-          "ips" => 16.144733348800386,
-          "maximum" => 320_994.0,
-          "median" => 49262.0,
-          "minimum" => 48727.0,
-          "mode" => [49179.0, 49222.0, 49020.0, 49128.0],
-          "percentiles" => %{"50" => 49262.0, "99" => 320_994.0},
-          "sample_size" => 81,
-          "std_dev" => 43170.800977605344,
-          "std_dev_ips" => 11.252573528147071,
-          "std_dev_ratio" => 0.6969810702375694
+          "median" => 8_030_544,
+          "std_dev" => 0,
+          "std_dev_ratio" => 0,
+          "maximum" => 8_030_544,
+          "ips" => 0.124524565210028,
+          "minimum" => 8_030_544,
+          "std_dev_ips" => 0,
+          "mode" => nil,
+          "sample_size" => 1,
+          "average" => 8_030_544,
+          "percentiles" => %{
+            "99" => 8_030_544,
+            "50" => 8_030_544
+          }
+        },
+        "insert_changeset" => %{
+          "mode" => nil,
+          "sample_size" => 1,
+          "average" => 7_990_089,
+          "ips" => 0.125155051464383,
+          "std_dev_ips" => 0,
+          "minimum" => 7_990_089,
+          "percentiles" => %{
+            "50" => 7_990_089,
+            "99" => 7_990_089
+          },
+          "std_dev" => 0,
+          "median" => 7_990_089,
+          "std_dev_ratio" => 0,
+          "maximum" => 7_990_089
         }
       }
     }

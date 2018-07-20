@@ -36,15 +36,14 @@ defmodule ElixirBench.Runner.Job do
   @doc """
   Executes a benchmarking job for a specific commit.
   """
-  def start_job(job, opts) do
+  def start_job(job, runner_fun \\ &run_job/1, opts \\ []) do
     ensure_no_other_jobs!()
 
     timeout = Keyword.get(opts, :timeout, Confex.fetch_env!(:runner, :job_timeout))
-    task_fun = Keyword.get(opts, :task_fun, &run_job/1)
 
     task =
       Task.Supervisor.async_nolink(ElixirBench.Runner.JobsSupervisor, fn ->
-        task_fun.(job)
+        runner_fun.(job)
       end)
 
     case Task.yield(task, timeout) || Task.shutdown(task) do
@@ -108,6 +107,7 @@ defmodule ElixirBench.Runner.Job do
       end)
 
     Map.put(services, "runner", build_runner_service(job, services))
+    |> delete_all_keys("wait")
   end
 
   defp get_dep_container_name(%{"container_name" => container_name}), do: container_name
@@ -127,17 +127,17 @@ defmodule ElixirBench.Runner.Job do
   end
 
   defp build_runner_command_from_deps(deps) do
-    command =
-      Enum.reduce(deps, "", fn {_dep_name, dep_params}, acc ->
+    wait_command =
+      Enum.reduce(deps, "", fn {_dep_name, dep_params}, command ->
         wait_port = get_in(dep_params, ["wait", "port"])
 
         case wait_port do
-          nil -> acc
-          port -> acc <> "wait-for.sh localhost:#{port} -t 200 -- "
+          nil -> command
+          port -> command <> "wait-for.sh localhost:#{port} -t 200 -- "
         end
       end)
 
-    command <> "mix run bench/bench_helper.exs"
+    wait_command <> "mix run bench/bench_helper.exs"
   end
 
   defp build_runner_environment(job) do
@@ -164,6 +164,7 @@ defmodule ElixirBench.Runner.Job do
     end)
   end
 
+  # Get measurement statistics data and ignore the rest
   @doc false
   def format_measurement(measurement, benchmark_name)
       when is_map(measurement) and is_binary(benchmark_name) do
@@ -191,6 +192,16 @@ defmodule ElixirBench.Runner.Job do
       cpu: Benchee.System.cpu_speed()
     }
   end
+
+  # delete key from map and nested maps and return
+  defp delete_all_keys(map, key) when is_map(map) do
+    Map.delete(map, key)
+    |> Enum.reduce(%{}, fn {k, v}, cleaned_map ->
+      Map.put(cleaned_map, k, delete_all_keys(v))
+    end)
+  end
+
+  defp delete_all_keys(value), do: value
 
   def read_mix_deps(file) do
     case File.read(file) do

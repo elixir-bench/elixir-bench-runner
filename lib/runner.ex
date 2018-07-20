@@ -38,10 +38,10 @@ defmodule ElixirBench.Runner do
   end
 
   defp process_job(job_data, client) do
-    opts = [timeout: @job_timeout, task_fun: &Job.run_job/1]
-    job = build_job_struct(job_data)
-
-    job = Job.start_job(job, opts)
+    job =
+      job_data
+      |> build_job_struct()
+      |> Job.start_job(timeout: @job_timeout)
 
     data = %{
       elixir_version: job.config.elixir_version,
