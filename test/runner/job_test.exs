@@ -49,57 +49,21 @@ defmodule ElixirBench.Runner.JobTest do
 
       Process.exit(pid, :kill)
     end
-  end
 
-  describe "start_job/3" do
     test "handle job timeout" do
       task_fun = fn _job ->
         :timer.sleep(2_000)
         {:ok, %{}}
       end
 
-      job = Job.start_job(job_fixture(), task_fun, timeout: 100)
+      timeout_bkp = Application.get_env(:runner, :job_timeout)
+      Application.put_env(:runner, :job_timeout, 10)
+
+      job = Job.start_job(job_fixture(), task_fun)
 
       assert %{log: "Job execution timed out", status: 127} = job
-    end
-  end
 
-  describe "ensure_no_other_jobs!/0" do
-    test "raise error if active child process already exist under JobsSupervisor" do
-      assert %{active: 0} = Job.ensure_no_other_jobs!()
-
-      %{pid: pid} =
-        Task.Supervisor.async_nolink(ElixirBench.Runner.JobsSupervisor, fn ->
-          :timer.sleep(3_000)
-        end)
-
-      assert_raise MatchError, fn ->
-        Job.ensure_no_other_jobs!()
-      end
-
-      Process.exit(pid, :kill)
-    end
-  end
-
-  describe "get_benchmarks_output_path/1" do
-    test "return path for writing benchmark results" do
-      env_backup = Application.get_env(:runner, :benchmars_output_path)
-      Application.put_env(:runner, :benchmars_output_path, "/tmp")
-
-      assert "/tmp/test_job" = Job.get_benchmars_output_path(job_fixture())
-
-      Application.put_env(:runner, :benchmars_output_path, env_backup)
-    end
-
-    test "raise if output path not defined" do
-      env_backup = Application.get_env(:runner, :benchmars_output_path)
-      Application.delete_env(:runner, :benchmars_output_path)
-
-      assert_raise ArgumentError, fn ->
-        Job.get_benchmars_output_path(job_fixture())
-      end
-
-      Application.put_env(:runner, :benchmars_output_path, env_backup)
+      Application.put_env(:runner, :job_timeout, timeout_bkp)
     end
   end
 
@@ -117,6 +81,7 @@ defmodule ElixirBench.Runner.JobTest do
                  "runner" => %{
                    "image" => "elixirbench/runner:1.5.2-20.1.2",
                    "command" => "mix run bench/bench_helper.exs",
+                   "depends_on" => [],
                    "network_mode" => "host",
                    "environment" => %{
                      "ELIXIRBENCH_REPO_SLUG" => "elixir-ecto/ecto",
@@ -129,48 +94,52 @@ defmodule ElixirBench.Runner.JobTest do
                  }
                },
                "version" => "3"
-             } = compose_config
+             } == compose_config
     end
 
     test "return docker-compose setup for job with deps and environment variables" do
       job = job_fixture() |> with_deps |> with_env_variables
-      timeout = 200
 
       compose_config =
-        Job.get_compose_config(job)
+        job
+        |> Job.get_compose_config()
         |> Antidote.decode!()
 
-      %{"services" => services} = compose_config
-
-      assert %{"job_test_job_mysql" => _mysql} = services
-      assert %{"job_test_job_postgres" => _postgres} = services
-
-      %{"runner" => %{"command" => command}} = services
-
-      assert command =~
-               "wait-for.sh localhost:3306 -t #{timeout} -- wait-for.sh localhost:5432 -t #{
-                 timeout
-               } -- mix run bench/bench_helper.exs"
-
-      assert %{"runner" => %{"depends_on" => ["job_test_job_mysql", "job_test_job_postgres"]}} =
-               services
-
-      assert %{"runner" => %{"environment" => %{"PG_URL" => "postgres:postgres@localhost"}}} =
-               services
-
-      assert %{"runner" => %{"environment" => %{"MYSQL_URL" => "root@localhost"}}} = services
+      assert %{
+               "services" => %{
+                 "job_test_job_mysql" => %{
+                   "container_name" => "mysql",
+                   "environment" => %{"MYSQL_ALLOW_EMPTY_PASSWORD" => "true"},
+                   "image" => "mysql:5.7.20",
+                   "network_mode" => "host"
+                 },
+                 "job_test_job_postgres" => %{
+                   "container_name" => "postgres",
+                   "image" => "postgres:9.6.6-alpine",
+                   "network_mode" => "host"
+                 },
+                 "runner" => %{
+                   "command" =>
+                     "wait-for.sh localhost:3306 -t 200 -- wait-for.sh localhost:5432 -t 200 -- mix run bench/bench_helper.exs",
+                   "depends_on" => ["job_test_job_mysql", "job_test_job_postgres"],
+                   "environment" => %{
+                     "MYSQL_URL" => "root@localhost",
+                     "PG_URL" => "postgres:postgres@localhost"
+                   }
+                 }
+               }
+             } = compose_config
     end
   end
 
   describe "format_measurement/2" do
     test "get and format statistics of a benchmark measurement" do
       measurements = measurement_fixture()
-      formatted_measurements = Job.format_measurement(measurements, "insert_mysql")
+      formatted_measurements = Job.format_measurement(measurements, "insert")
 
       expected_measurements = %{
-        "insert_mysql/insert_changeset" =>
-          get_in(measurements, ["statistics", "insert_changeset"]),
-        "insert_mysql/insert_plain" => get_in(measurements, ["statistics", "insert_plain"])
+        "insert/insert_changeset" => get_in(measurements, ["statistics", "insert_changeset"]),
+        "insert/insert_plain" => get_in(measurements, ["statistics", "insert_plain"])
       }
 
       assert ^expected_measurements = formatted_measurements

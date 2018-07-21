@@ -36,10 +36,10 @@ defmodule ElixirBench.Runner.Job do
   @doc """
   Executes a benchmarking job for a specific commit.
   """
-  def start_job(job, runner_fun \\ &run_job/1, opts \\ []) do
+  def start_job(job, runner_fun \\ &run_job/1) do
     ensure_no_other_jobs!()
 
-    timeout = Keyword.get(opts, :timeout, Confex.fetch_env!(:runner, :job_timeout))
+    timeout = Confex.fetch_env!(:runner, :job_timeout)
 
     task =
       Task.Supervisor.async_nolink(ElixirBench.Runner.JobsSupervisor, fn ->
@@ -55,7 +55,6 @@ defmodule ElixirBench.Runner.Job do
     end
   end
 
-  @doc false
   def ensure_no_other_jobs! do
     %{active: 0} = Supervisor.count_children(ElixirBench.Runner.JobsSupervisor)
   end
@@ -85,7 +84,6 @@ defmodule ElixirBench.Runner.Job do
     end
   end
 
-  @doc false
   def get_benchmars_output_path(%Job{id: id}) do
     Confex.fetch_env!(:runner, :benchmars_output_path) <> "/" <> id
   end
@@ -107,7 +105,7 @@ defmodule ElixirBench.Runner.Job do
       end)
 
     Map.put(services, "runner", build_runner_service(job, services))
-    |> delete_all_keys("wait")
+    |> delete_non_docker_tag("wait")
   end
 
   defp get_dep_container_name(%{"container_name" => container_name}), do: container_name
@@ -164,7 +162,7 @@ defmodule ElixirBench.Runner.Job do
     end)
   end
 
-  # Get measurement statistics data and ignore the rest
+  # From benchee we are just interested on measurement statistics, so ignore the rest
   @doc false
   def format_measurement(measurement, benchmark_name)
       when is_map(measurement) and is_binary(benchmark_name) do
@@ -193,15 +191,17 @@ defmodule ElixirBench.Runner.Job do
     }
   end
 
-  # delete key from map and nested maps and return
-  defp delete_all_keys(map, key) when is_map(map) do
-    Map.delete(map, key)
-    |> Enum.reduce(%{}, fn {k, v}, cleaned_map ->
-      Map.put(cleaned_map, k, delete_all_keys(v))
+  # Delete key that is not allowed in docker-compose otherwise it will break.
+  # This function iterates recursively over the services map and nested maps to delete the
+  # key for all services.
+  defp delete_non_docker_tag(services, tag) when is_map(services) do
+    Map.delete(services, tag)
+    |> Enum.reduce(%{}, fn {service_name, service_params}, cleaned_map ->
+      Map.put(cleaned_map, service_name, delete_non_docker_tag(service_params, tag))
     end)
   end
 
-  defp delete_all_keys(value), do: value
+  defp delete_non_docker_tag(value, _tag), do: value
 
   def read_mix_deps(file) do
     case File.read(file) do

@@ -5,7 +5,6 @@ defmodule ElixirBench.Runner do
   alias ElixirBench.Runner.{Api, Job, Config}
 
   @claim_delay 10_000
-  @job_timeout Confex.fetch_env!(:runner, :job_timeout)
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, opts)
@@ -41,7 +40,7 @@ defmodule ElixirBench.Runner do
     job =
       job_data
       |> build_job_struct()
-      |> Job.start_job(timeout: @job_timeout)
+      |> Job.start_job()
 
     data = %{
       elixir_version: job.config.elixir_version,
