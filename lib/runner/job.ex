@@ -55,37 +55,37 @@ defmodule ElixirBench.Runner.Job do
     end
   end
 
-  def ensure_no_other_jobs! do
+  defp ensure_no_other_jobs! do
     %{active: 0} = Supervisor.count_children(ElixirBench.Runner.JobsSupervisor)
   end
 
   @doc false
   def run_job(job) do
-    benchmars_output_path = get_benchmars_output_path(job)
-    File.mkdir_p!(benchmars_output_path)
+    benchmarks_output_path = get_benchmarks_output_path(job)
+    File.mkdir_p!(benchmarks_output_path)
 
     compose_config = get_compose_config(job)
-    compose_config_path = "#{benchmars_output_path}/#{job.id}-config.yml"
+    compose_config_path = "#{benchmarks_output_path}/#{job.id}-config.yml"
     File.write!(compose_config_path, compose_config)
 
     try do
       {log, status} =
         System.cmd("docker-compose", ["-f", compose_config_path] ++ @static_compose_args)
 
-      measurements = collect_measurements(benchmars_output_path)
-      context = collect_context(benchmars_output_path)
+      measurements = collect_measurements(benchmarks_output_path)
+      context = collect_context(benchmarks_output_path)
       %{job | log: log, status: status, measurements: measurements, context: context}
     after
       # Stop all containers and delete all containers, images and build cache
       {_log, 0} = System.cmd("docker", ~w[system prune -a -f])
 
       # Clean benchmarking temporary files
-      File.rm_rf!(benchmars_output_path)
+      File.rm_rf!(benchmarks_output_path)
     end
   end
 
-  def get_benchmars_output_path(%Job{id: id}) do
-    Confex.fetch_env!(:runner, :benchmars_output_path) <> "/" <> id
+  def get_benchmarks_output_path(%Job{id: id}) do
+    Confex.fetch_env!(:runner, :benchmarks_output_path) <> "/" <> id
   end
 
   @doc false
@@ -112,12 +112,13 @@ defmodule ElixirBench.Runner.Job do
   defp get_dep_container_name(%{"image" => image}), do: dep_name_from_image(image)
 
   defp build_runner_service(job, deps) do
-    container_benchmars_output_path = Confex.fetch_env!(:runner, :container_benchmars_output_path)
+    container_benchmarks_output_path =
+      Confex.fetch_env!(:runner, :container_benchmarks_output_path)
 
     %{
       network_mode: @network_mode,
       image: "elixirbench/runner:#{job.config.elixir_version}-#{job.config.erlang_version}",
-      volumes: ["#{get_benchmars_output_path(job)}:#{container_benchmars_output_path}:Z"],
+      volumes: ["#{get_benchmarks_output_path(job)}:#{container_benchmarks_output_path}:Z"],
       depends_on: Map.keys(deps),
       environment: build_runner_environment(job),
       command: build_runner_command_from_deps(deps)
@@ -152,8 +153,8 @@ defmodule ElixirBench.Runner.Job do
     slug |> String.split("/") |> List.last()
   end
 
-  defp collect_measurements(benchmars_output_path) do
-    "#{benchmars_output_path}/*.json"
+  defp collect_measurements(benchmarks_output_path) do
+    "#{benchmarks_output_path}/*.json"
     |> Path.wildcard()
     |> Enum.reduce(%{}, fn path, acc ->
       benchmark_name = Path.basename(path, ".json")
@@ -179,8 +180,8 @@ defmodule ElixirBench.Runner.Job do
 
   def format_measurement(_measurement, _benchmark_name), do: %{}
 
-  defp collect_context(benchmars_output_path) do
-    mix_deps = read_mix_deps("#{benchmars_output_path}/mix.lock")
+  defp collect_context(benchmarks_output_path) do
+    mix_deps = read_mix_deps("#{benchmarks_output_path}/mix.lock")
 
     %{
       dependency_versions: mix_deps,

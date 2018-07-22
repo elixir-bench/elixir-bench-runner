@@ -12,8 +12,8 @@ config :runner,
        :supported_erlang_versions,
        {:system, :list, "SUPPORTED_ERLANG_VERSIONS", ["20.1.2"]}
 
-config :runner, :benchmars_output_path, {:system, "BENCHMARKS_OUTPUT_PATH", "/tmp/benchmarks"}
-config :runner, :container_benchmars_output_path, "/var/bench"
+config :runner, :benchmarks_output_path, {:system, "BENCHMARKS_OUTPUT_PATH", "/tmp/benchmarks"}
+config :runner, :container_benchmarks_output_path, "/var/bench"
 
 config :runner, :job_timeout, {:system, :integer, "JOB_TIMEOUT", 900_000}
 
