@@ -36,23 +36,15 @@ defmodule ElixirBench.Runner.Job do
   @doc """
   Executes a benchmarking job for a specific commit.
   """
-  def start_job(id, repo_slug, branch, commit, config) do
+  def start_job(job, runner_fun \\ &run_job/1) do
     ensure_no_other_jobs!()
 
-    job = %Job{
-      id: to_string(id),
-      repo_slug: repo_slug,
-      branch: branch,
-      commit: commit,
-      config: config
-    }
+    timeout = Confex.fetch_env!(:runner, :job_timeout)
 
     task =
       Task.Supervisor.async_nolink(ElixirBench.Runner.JobsSupervisor, fn ->
-        run_job(job)
+        runner_fun.(job)
       end)
-
-    timeout = Confex.fetch_env!(:runner, :job_timeout)
 
     case Task.yield(task, timeout) || Task.shutdown(task) do
       {:ok, result} ->
@@ -68,36 +60,36 @@ defmodule ElixirBench.Runner.Job do
   end
 
   @doc false
-  # Public for testing purposes
   def run_job(job) do
-    benchmars_output_path = get_benchmars_output_path(job)
-    File.mkdir_p!(benchmars_output_path)
+    benchmarks_output_path = get_benchmarks_output_path(job)
+    File.mkdir_p!(benchmarks_output_path)
 
     compose_config = get_compose_config(job)
-    compose_config_path = "#{benchmars_output_path}/#{job.id}-config.yml"
+    compose_config_path = "#{benchmarks_output_path}/#{job.id}-config.yml"
     File.write!(compose_config_path, compose_config)
 
     try do
       {log, status} =
         System.cmd("docker-compose", ["-f", compose_config_path] ++ @static_compose_args)
 
-      measurements = collect_measurements(benchmars_output_path)
-      context = collect_context(benchmars_output_path)
+      measurements = collect_measurements(benchmarks_output_path)
+      context = collect_context(benchmarks_output_path)
       %{job | log: log, status: status, measurements: measurements, context: context}
     after
       # Stop all containers and delete all containers, images and build cache
       {_log, 0} = System.cmd("docker", ~w[system prune -a -f])
 
       # Clean benchmarking temporary files
-      File.rm_rf!(benchmars_output_path)
+      File.rm_rf!(benchmarks_output_path)
     end
   end
 
-  defp get_benchmars_output_path(%Job{id: id}) do
-    Confex.fetch_env!(:runner, :benchmars_output_path) <> "/" <> id
+  def get_benchmarks_output_path(%Job{id: id}) do
+    Confex.fetch_env!(:runner, :benchmarks_output_path) <> "/" <> id
   end
 
-  defp get_compose_config(job) do
+  @doc false
+  def get_compose_config(job) do
     Antidote.encode!(%{version: "3", services: build_services(job)})
   end
 
@@ -112,22 +104,39 @@ defmodule ElixirBench.Runner.Job do
         Map.put(services, name, dep)
       end)
 
-    Map.put(services, "runner", build_runner_service(job, Map.keys(services)))
+    Map.put(services, "runner", build_runner_service(job, services))
+    |> delete_non_docker_tag("wait")
   end
 
   defp get_dep_container_name(%{"container_name" => container_name}), do: container_name
   defp get_dep_container_name(%{"image" => image}), do: dep_name_from_image(image)
 
   defp build_runner_service(job, deps) do
-    container_benchmars_output_path = Confex.fetch_env!(:runner, :container_benchmars_output_path)
+    container_benchmarks_output_path =
+      Confex.fetch_env!(:runner, :container_benchmarks_output_path)
 
     %{
       network_mode: @network_mode,
       image: "elixirbench/runner:#{job.config.elixir_version}-#{job.config.erlang_version}",
-      volumes: ["#{get_benchmars_output_path(job)}:#{container_benchmars_output_path}:Z"],
-      depends_on: deps,
-      environment: build_runner_environment(job)
+      volumes: ["#{get_benchmarks_output_path(job)}:#{container_benchmarks_output_path}:Z"],
+      depends_on: Map.keys(deps),
+      environment: build_runner_environment(job),
+      command: build_runner_command_from_deps(deps)
     }
+  end
+
+  defp build_runner_command_from_deps(deps) do
+    wait_command =
+      Enum.reduce(deps, "", fn {_dep_name, dep_params}, command ->
+        wait_port = get_in(dep_params, ["wait", "port"])
+
+        case wait_port do
+          nil -> command
+          port -> command <> "wait-for.sh localhost:#{port} -t 200 -- "
+        end
+      end)
+
+    wait_command <> "mix run bench/bench_helper.exs"
   end
 
   defp build_runner_environment(job) do
@@ -144,8 +153,8 @@ defmodule ElixirBench.Runner.Job do
     slug |> String.split("/") |> List.last()
   end
 
-  defp collect_measurements(benchmars_output_path) do
-    "#{benchmars_output_path}/*.json"
+  defp collect_measurements(benchmarks_output_path) do
+    "#{benchmarks_output_path}/*.json"
     |> Path.wildcard()
     |> Enum.reduce(%{}, fn path, acc ->
       benchmark_name = Path.basename(path, ".json")
@@ -154,19 +163,25 @@ defmodule ElixirBench.Runner.Job do
     end)
   end
 
-  defp format_measurement(measurement, benchmark_name) do
-    run_times = Map.get(measurement, "run_times")
+  # From benchee we are just interested on measurement statistics, so ignore the rest
+  @doc false
+  def format_measurement(measurement, benchmark_name)
+      when is_map(measurement) and is_binary(benchmark_name) do
     statistics = Map.get(measurement, "statistics")
 
-    Map.new(run_times, fn {name, runs} ->
-      data = Map.fetch!(statistics, name)
-      data = Map.put(data, :run_times, runs)
-      {benchmark_name <> "/" <> name, data}
-    end)
+    case is_map(statistics) do
+      true ->
+        Map.new(statistics, fn {name, data} -> {"#{benchmark_name}/#{name}", data} end)
+
+      false ->
+        %{}
+    end
   end
 
-  defp collect_context(benchmars_output_path) do
-    mix_deps = read_mix_deps("#{benchmars_output_path}/mix.lock")
+  def format_measurement(_measurement, _benchmark_name), do: %{}
+
+  defp collect_context(benchmarks_output_path) do
+    mix_deps = read_mix_deps("#{benchmarks_output_path}/mix.lock")
 
     %{
       dependency_versions: mix_deps,
@@ -176,6 +191,18 @@ defmodule ElixirBench.Runner.Job do
       cpu: Benchee.System.cpu_speed()
     }
   end
+
+  # Delete key that is not allowed in docker-compose otherwise it will break.
+  # This function iterates recursively over the services map and nested maps to delete the
+  # key for all services.
+  defp delete_non_docker_tag(services, tag) when is_map(services) do
+    Map.delete(services, tag)
+    |> Enum.reduce(%{}, fn {service_name, service_params}, cleaned_map ->
+      Map.put(cleaned_map, service_name, delete_non_docker_tag(service_params, tag))
+    end)
+  end
+
+  defp delete_non_docker_tag(value, _tag), do: value
 
   def read_mix_deps(file) do
     case File.read(file) do
