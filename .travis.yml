@@ -8,6 +8,9 @@ otp_release:
 env:
   - MIX_ENV=test RUNNER_API_USER=test-runner RUNNER_API_KEY=test RUNNER_API_URL=http://localhost.com:4000/runner-api
 
+before_script:
+  - mix compile --warnings-as-errors
+
 script:
   - mix format --check-formatted
   - mix test
