@@ -32,10 +32,10 @@ The project requires the setup of the following environment variables:
 | `RUNNER_API_USER`|   username for authentication    |               test-runner              |
 | `RUNNER_API_KEY` | password key for authentication  |                  test                  |
 
-Start the application passing the required variables
+Set the variables and start the application with the command:
 
 ```bash
-RUNNER_API_URL=api.elixirbench.org/runner-api RUNNER_API_USER=test-runner RUNNER_API_KEY=test _build/prod/rel/runner/bin/runner foreground
+_build/prod/rel/runner/bin/runner foreground
 ```
 
 The API Server needs to have proper credentials for the runner configured as well.
