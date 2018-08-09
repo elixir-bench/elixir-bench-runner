@@ -46,7 +46,8 @@ defmodule ElixirBench.Runner do
       elixir_version: job.config.elixir_version,
       erlang_version: job.config.erlang_version,
       measurements: job.measurements,
-      log: job.log || ""
+      log: job.log || "",
+      exit_status: job.status
     }
 
     data = Map.merge(data, job.context)
