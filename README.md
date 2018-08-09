@@ -15,16 +15,14 @@ Benchmarks are running inside a docker container, so you need to have
 
 ## Deployment
 
-This project uses `distillery` for deployments. The relese requires a `RUNNER_API_URL`,
-`RUNNER_API_KEY` and `RUNNER_API_USER` environment variables for communication with
-the API server. Built releases are placed under `_build/prod/rel/runner`
+This project uses `distillery` for deployments. Built releases are placed under `_build/prod/rel/runner`
 directory. To build the release you can use the command below:
 
 ```bash
 $ MIX_ENV=prod mix release --env=prod
 ```
 
-The project requires the setup of the following environment variables:
+There are also some environment variables that can be set when running the project:
 
 |       NAME       |               Description        |                 Default                |
 |:----------------:|:--------------------------------:|:--------------------------------------:|
@@ -35,7 +33,7 @@ The project requires the setup of the following environment variables:
 Set the variables and start the application with the command:
 
 ```bash
-_build/prod/rel/runner/bin/runner foreground
+RUNNER_API_URL=api.elixirbench.org/runner-api RUNNER_API_USER=test-runner RUNNER_API_KEY=test _build/prod/rel/runner/bin/runner foreground
 ```
 
 The API Server needs to have proper credentials for the runner configured as well.
