@@ -1,4 +1,4 @@
-<img src="../web/public/images/logo.png" height="68" />
+<img src="https://github.com/elixir-bench/elixir-bench.github.io/blob/master/images/logo.png" height="68" />
 
 # ElixirBench Runner
 
@@ -15,13 +15,32 @@ Benchmarks are running inside a docker container, so you need to have
 
 ## Deployment
 
-To build the release you can use `mix release`. The relese requires a `RUNNER_API_URL`, `RUNNER_API_KEY` and `RUNNER_API_USER`
-environment variables for communication with the API server.
+This project uses `distillery` for deployments. Built releases are placed under `_build/prod/rel/runner`
+directory. To build the release you can use the command below:
 
-The server needs to have proper credentials for the runner configured as well. This can be done from
-the release console using:
+```bash
+$ MIX_ENV=prod mix release --env=prod
+```
+
+There are also some environment variables that can be set when running the project:
+
+|       NAME       |               Description        |                 Default                |
+|:----------------:|:--------------------------------:|:--------------------------------------:|
+| `RUNNER_API_URL` |         url for the api server   | https://api.elixirbench.org/runner-api |
+| `RUNNER_API_USER`|   username for authentication    |               test-runner              |
+| `RUNNER_API_KEY` | password key for authentication  |                  test                  |
+
+Set the variables and start the application with the command:
+
+```bash
+RUNNER_API_URL=api.elixirbench.org/runner-api RUNNER_API_USER=test-runner RUNNER_API_KEY=test _build/prod/rel/runner/bin/runner foreground
+```
+
+The API Server needs to have proper credentials for the runner configured as well.
+This can be done from the release console using:
+
 ```elixir
-ElixirBench.Benchmarks.create_runner(%{api_key: some_key, name: some_name})
+ElixirBench.Benchmarks.create_runner(%{name: test-runner, api_key: test})
 ```
 
 ## License
