@@ -115,9 +115,12 @@ defmodule ElixirBench.Runner.Job do
     container_benchmarks_output_path =
       Confex.fetch_env!(:runner, :container_benchmarks_output_path)
 
+    image_repository = Confex.fetch_env!(:runner, :image_repository)
+
     %{
       network_mode: @network_mode,
-      image: "elixirbench/runner:#{job.config.elixir_version}-#{job.config.erlang_version}",
+      image:
+        "#{image_repository}/runner:#{job.config.elixir_version}-#{job.config.erlang_version}",
       volumes: ["#{get_benchmarks_output_path(job)}:#{container_benchmarks_output_path}:Z"],
       depends_on: Map.keys(deps),
       environment: build_runner_environment(job),
